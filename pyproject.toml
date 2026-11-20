@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "picpro-gui"
+version = "0.1.0"
+description = "Qt desktop interface for the PicPro PIC programmer"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "GPL-2.0-only"
+dependencies = ["picpro>=0.4.2", "PyQt6>=6.5", "pyserial", "intelhex", "pyyaml"]
+
+[project.optional-dependencies]
+dev = ["ruff", "mypy", "types-PyYAML"]
+test = ["pytest"]
+
+[project.gui-scripts]
+picpro-gui = "picpro_gui.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["picpro_gui", "picpro_gui.*"]
+
+[tool.ruff]
+line-length = 170
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = ["D", "N999", "CPY001"]
+
+[tool.ruff.lint.flake8-quotes]
+inline-quotes = "single"  # Migrate do double when Pr's are merged
+
+[tool.ruff.lint.mccabe]
+max-complexity = 20
+
+[tool.ruff.lint.pylint]
+allow-magic-value-types = ["int", "str"]
+max-args = 8
+max-branches = 16
+max-returns = 10
+
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101", "PLR2004", "INP001", "E501", "N999", "PLR0915", "C901"]  # Use of assert detected
+
+
+[tool.mypy]
+files = ["picpro_gui", "tests"]
+python_version = 3.11
+strict = true
+# Make it bit lax
+show_error_codes = true
+ignore_missing_imports = true
+allow_any_generics = true
+warn_return_any = false
+warn_unreachable = false
+disallow_subclassing_any = false
+disallow_untyped_decorators = false
+exclude = "(.venv/.*|build/.*)"
