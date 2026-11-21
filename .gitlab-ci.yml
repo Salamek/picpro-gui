@@ -1,0 +1,118 @@
+stages:
+  - test
+  - package
+  - packagetest
+  - deploy
+
+variables:
+  QT_QPA_PLATFORM: offscreen
+
+.gui-test:
+  stage: test
+  script:
+    - python3 -m venv .venv
+    - .venv/bin/python -m pip install '.[dev,test]'
+    - .venv/bin/ruff check picpro_gui tests
+    - .venv/bin/mypy
+    - .venv/bin/pytest tests
+
+test:debian:
+  extends: .gui-test
+  before_script:
+    - apt-get update -qy
+    - apt-get install -y ca-certificates python3-venv python3-pyqt6
+  tags:
+    - debian
+
+test:archlinux:
+  extends: .gui-test
+  before_script:
+    - pacman -Syu --needed --noconfirm python python-pip qt6-base
+  tags:
+    - archlinux
+
+package:debian:
+  stage: package
+  script:
+    - apt-get update -qy
+    - apt-get install -y build-essential dpkg-dev
+    - apt-get build-dep -y ./
+    - dpkg-buildpackage -us -uc -b
+    - mkdir -p packages/debian
+    - mv ../picpro-gui_*_all.deb packages/debian/
+  artifacts:
+    paths:
+      - packages/debian/*.deb
+    expire_in: 1d
+  tags:
+    - debian
+
+package:archlinux:
+  stage: package
+  script:
+    - pacman -Syu --needed --noconfirm base-devel sudo picpro python python-pyqt6 python-pyserial python-intelhex python-yaml shared-mime-info desktop-file-utils python-build python-installer python-setuptools python-wheel python-pytest
+    - useradd -m -G users -s /bin/bash package
+    - chown -R package:users .
+    - sudo -H -u package makepkg -f
+    - mkdir -p packages/archlinux
+    - mv picpro-gui-*.pkg.tar.zst packages/archlinux/
+  artifacts:
+    paths:
+      - packages/archlinux/*.pkg.tar.zst
+    expire_in: 1d
+  tags:
+    - archlinux
+
+.gui-package-test:
+  stage: packagetest
+  script:
+    - picpro-gui --help
+    - cd /tmp
+    - python3 -c 'from PyQt6.QtCore import QSettings; from PyQt6.QtWidgets import QApplication; from picpro_gui.window import PicProGUI; app = QApplication([]); window = PicProGUI(settings=QSettings())'
+    - test -f /usr/share/applications/picpro-gui.desktop
+    - test -f /usr/share/mime/packages/picpro-project.xml
+    - test -f /usr/share/icons/hicolor/scalable/apps/picpro-gui.svg
+
+packagetest:debian:
+  extends: .gui-package-test
+  before_script:
+    - apt-get update -qy
+    - apt-get install -y ./packages/debian/*.deb
+  dependencies:
+    - package:debian
+  tags:
+    - debian
+
+packagetest:archlinux:
+  extends: .gui-package-test
+  before_script:
+    - pacman -Syu --noconfirm
+    - pacman -U --noconfirm packages/archlinux/*.pkg.tar.zst
+  dependencies:
+    - package:archlinux
+  tags:
+    - archlinux
+
+repoupdate:
+  stage: deploy
+  before_script:
+    - apt-get update -qy
+    - apt-get install -y ca-certificates openssh-client python3-build python3-venv twine
+    - eval "$(ssh-agent -s)"
+    - ssh-add <(echo "$SSH_PRIVATE_KEY")
+    - mkdir -p ~/.ssh
+    - '[[ -f /.dockerenv ]] && echo -e "Host *\n\tStrictHostKeyChecking no\n" > ~/.ssh/config'
+  script:
+    - python3 -m build
+    - scp packages/archlinux/picpro-gui-*.pkg.tar.zst www-data@192.168.1.27:/var/www/repository.salamek.cz/www/arch/pub/any
+    - scp packages/debian/picpro-gui_*.deb www-data@192.168.1.27:/var/www/repository.salamek.cz/cache/deb/pub/all
+    - ssh www-data@192.168.1.27 '/var/www/repository.salamek.cz/deb-pub-update.sh'
+    - ssh www-data@192.168.1.27 '/var/www/repository.salamek.cz/arch-pub-update.sh'
+    - twine upload dist/*
+  dependencies:
+    - package:archlinux
+    - package:debian
+  tags:
+    - debian
+  only:
+    - tags
