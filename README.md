@@ -3,10 +3,57 @@
 A Qt desktop interface for the [PicPro](https://github.com/Salamek/picpro)
 PIC programmer. It requires PicPro 0.5.0 or later.
 
-Install `picpro-gui` from PyPI with `pip install picpro-gui`, or from a
-configured package repository with `apt install picpro-gui` on Debian or
-`pacman -S picpro-gui` on Arch Linux. Launch it with `picpro-gui` or pass
-a project file as an argument.
+## Installation
+
+### PyPI
+
+```bash
+pip install picpro-gui
+```
+
+### Debian and derivatives
+
+Add the Salamek package repository if you haven’t already configured it for PicPro.
+
+```bash
+sudo wget -O /usr/share/keyrings/salamek-archive-keyring.gpg https://repository.salamek.cz/deb/salamek.gpg
+echo 'deb [signed-by=/usr/share/keyrings/salamek-archive-keyring.gpg] https://repository.salamek.cz/deb/pub all main' | sudo tee /etc/apt/sources.list.d/salamek.cz.list
+```
+
+Install PicPro GUI.
+
+```bash
+sudo apt update
+sudo apt install picpro-gui
+```
+
+### Arch Linux
+
+Add the following section to `/etc/pacman.conf` if you haven’t already configured it for PicPro.
+
+```ini
+[salamek]
+Server = https://repository.salamek.cz/arch/pub/any
+SigLevel = Optional
+```
+
+Refresh the package databases and install PicPro GUI.
+
+```bash
+sudo pacman -Syu picpro-gui
+```
+
+### Launching PicPro GUI
+
+Run `picpro-gui` to start the application, or pass a project file to open it directly.
+
+```bash
+picpro-gui my-project.picpro.yml
+```
+
+The Debian and Arch packages also add a **PicPro GUI** application menu entry and register it as a handler for `.picpro.yml` files.
+
+### Development checkout
 
 From a checkout, install with `pip install -e '.[dev,test]'`. For development
 alongside a PicPro checkout, install both from this directory with
