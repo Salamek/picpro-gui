@@ -7,6 +7,21 @@ stages:
 variables:
   QT_QPA_PLATFORM: offscreen
 
+.salamek-debian:
+  before_script: &salamek-debian
+    - apt-get update -qy
+    - apt-get install -y ca-certificates wget
+    - wget -O /usr/share/keyrings/salamek-archive-keyring.gpg https://repository.salamek.cz/deb/salamek.gpg
+    - printf '%s\n' 'deb [signed-by=/usr/share/keyrings/salamek-archive-keyring.gpg] https://repository.salamek.cz/deb/pub all main' > /etc/apt/sources.list.d/salamek.cz.list
+    - apt-get update -qy
+
+.salamek-archlinux:
+  before_script: &salamek-archlinux
+    - |
+      if ! pacman-conf --repo-list | grep -Fxq salamek; then
+        printf '\n%s\n' '[salamek]' 'Server = https://repository.salamek.cz/arch/pub/any' 'SigLevel = Optional' >> /etc/pacman.conf
+      fi
+
 .gui-test:
   stage: test
   script:
@@ -33,8 +48,8 @@ test:archlinux:
 
 package:debian:
   stage: package
+  before_script: *salamek-debian
   script:
-    - apt-get update -qy
     - apt-get install -y build-essential dpkg-dev
     - apt-get build-dep -y ./
     - dpkg-buildpackage -us -uc -b
@@ -49,6 +64,7 @@ package:debian:
 
 package:archlinux:
   stage: package
+  before_script: *salamek-archlinux
   script:
     - pacman -Syu --needed --noconfirm base-devel sudo picpro python python-pyqt6 python-pyserial python-intelhex python-yaml shared-mime-info desktop-file-utils python-build python-installer python-setuptools python-wheel python-pytest
     - useradd -m -G users -s /bin/bash package
@@ -75,9 +91,10 @@ package:archlinux:
 
 packagetest:debian:
   extends: .gui-package-test
-  before_script:
-    - apt-get update -qy
+  before_script: *salamek-debian
+  script:
     - apt-get install -y ./packages/debian/*.deb
+    - !reference [.gui-package-test, script]
   dependencies:
     - package:debian
   tags:
@@ -85,9 +102,11 @@ packagetest:debian:
 
 packagetest:archlinux:
   extends: .gui-package-test
-  before_script:
+  before_script: *salamek-archlinux
+  script:
     - pacman -Syu --noconfirm
     - pacman -U --noconfirm packages/archlinux/*.pkg.tar.zst
+    - !reference [.gui-package-test, script]
   dependencies:
     - package:archlinux
   tags:
