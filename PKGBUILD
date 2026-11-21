@@ -28,4 +28,5 @@ check() {
 package() {
     cd "$srcdir/$pkgname"
     python -m installer --destdir="$pkgdir" dist/*.whl
+    install -Dm644 "$startdir/data/picpro-gui.desktop" "$pkgdir/usr/share/applications/picpro-gui.desktop"
 }

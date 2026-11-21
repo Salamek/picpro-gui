@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=PicPro GUI
+GenericName=PIC Microcontroller Programmer
+Comment=Program and read PIC microcontrollers
+Exec=picpro-gui
+Icon=applications-development
+Terminal=false
+Categories=Development;Electronics;
+Keywords=PIC;Microcontroller;Programmer;ICSP;
