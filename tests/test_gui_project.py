@@ -65,7 +65,7 @@ def test_blank_project_can_be_saved_without_hardware_or_firmware(tmp_path: Path,
     {'schema_version': 2}, {'schema_version': True}, {'chip': 12}, {'chip': 'UNKNOWN'},
     {'port': 123}, {'firmware': ['file.hex']}, {'icsp': 'false'}, {'pic_id': 123},
     {'fuses': []}, {'fuses': {'WDT': 1}}, {'memory': 'unknown'}, {'typo': True},
-    {'pic_id': 'XX'}, {'pic_id': '0011223344'},
+    {'pic_id': 'XX'}, {'pic_id': '12'}, {'chip': '18f2550', 'pic_id': '1234ABCD'}, {'pic_id': '0011223344'},
 ])
 def test_invalid_project_files_are_rejected(tmp_path: Path, chips: ChipDataReader, changes: dict) -> None:
     path = tmp_path / 'bad.yml'

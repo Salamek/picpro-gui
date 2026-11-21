@@ -1,7 +1,7 @@
 # PicPro GUI
 
 A Qt desktop interface for the [PicPro](https://github.com/Salamek/picpro)
-PIC programmer. It requires PicPro 0.4.2 or later.
+PIC programmer. It requires PicPro 0.5.0 or later.
 
 Install `picpro-gui` from PyPI with `pip install picpro-gui`, or from a
 configured package repository with `apt install picpro-gui` on Debian or

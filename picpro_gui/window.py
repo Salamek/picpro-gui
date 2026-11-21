@@ -472,6 +472,12 @@ class PicProGUI(QMainWindow):
                 message += ' (ROM may be read-protected)'
         elif isinstance(event, ChipConfigEvent):
             message = f'Chip ID: {event.config.chip_id:#x}; calibration: {event.config.calibrate:#x}'
+            # Older PicPro versions provide the config event without the mismatch check.
+            if getattr(event, 'device_id_mismatch', False):
+                message += (
+                    f'\nWarning: Device ID mismatch for {event.chip.chip_name}. '
+                    f'Expected {event.chip.chip_id:#06x}, read {event.config.chip_id:#06x}.'
+                )
         else:
             return
         self.log.appendPlainText(message)

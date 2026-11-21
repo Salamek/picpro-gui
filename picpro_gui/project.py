@@ -46,9 +46,9 @@ class Project:
             except ValueError as error:
                 msg = 'PIC ID must contain hexadecimal byte pairs.'
                 raise ProjectError(msg) from error
-            maximum = 8 if chip.core_bits == 16 else 4
-            if len(value) > maximum:
-                msg = f'PIC ID must be at most {maximum} bytes for {self.chip}.'
+            expected_bytes = 8 if chip.core_bits == 16 else 4
+            if len(value) != expected_bytes:
+                msg = f'PIC ID must be exactly {expected_bytes} bytes for {self.chip}.'
                 raise ProjectError(msg)
 
     @classmethod

@@ -4,7 +4,7 @@ Priority: optional
 Maintainer: Adam Schubert <adam.schubert@sg1-game.net>
 Build-Depends: debhelper-compat (= 13), dh-sequence-python3,
  pybuild-plugin-pyproject, python3-all, python3-setuptools (>= 77),
- python3-picpro (>= 0.4.2) <!nocheck>, python3-pyqt6 <!nocheck>,
+ python3-picpro (>= 0.5.0) <!nocheck>, python3-pyqt6 <!nocheck>,
  python3-serial <!nocheck>, python3-intelhex <!nocheck>,
  python3-yaml <!nocheck>, python3-pytest <!nocheck>
 Rules-Requires-Root: no
@@ -12,7 +12,7 @@ Rules-Requires-Root: no
 Package: picpro-gui
 Architecture: all
 Depends: ${misc:Depends}, ${python3:Depends},
- python3-picpro (>= 0.4.2), python3-pyqt6 (>= 6.5),
+ python3-picpro (>= 0.5.0), python3-pyqt6 (>= 6.5),
  python3-serial, python3-intelhex, python3-yaml
 Description: Qt desktop interface for the PicPro PIC programmer
  Save programming projects and program, verify, erase, or read supported

@@ -118,7 +118,7 @@ def test_save_open_and_save_as_preserve_configuration(window: PicProGUI, tmp_pat
     window.port_selector.setCurrentText('/dev/custom')
     window.firmware_edit.setText(str(firmware))
     window.icsp_check.setChecked(True)
-    window.id_edit.setText('1234')
+    window.id_edit.setText('1234ABCD')
     window.memory_selector.setCurrentText('EEPROM')
     fuse = window._fuse_controls['WDT']
     fuse.setCurrentIndex(fuse.findData('Disabled'))
@@ -239,6 +239,16 @@ def test_invalid_input_prevents_worker_and_serial_access(window: PicProGUI) -> N
     window.id_edit.setText('invalid')
     window.start_operation(Operation.CONFIG)
     assert window.worker is None
+    _factory(window).assert_not_called()
+
+
+def test_short_pic_id_prevents_programming(window: PicProGUI, hex_file_path: Path) -> None:
+    window.port_selector.setCurrentText('/dev/fake')
+    window.firmware_edit.setText(str(hex_file_path))
+    window.id_edit.setText('1234')
+    window.start_operation(Operation.PROGRAM)
+    assert window.worker is None
+    assert 'PIC ID must be exactly 4 bytes' in window.log.toPlainText()
     _factory(window).assert_not_called()
 
 
