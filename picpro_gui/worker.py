@@ -5,7 +5,7 @@ from copy import deepcopy
 from enum import StrEnum
 from threading import Event
 
-from picpro.PicPro import EventHandler, OperationCancelledError, PicPro
+from picpro.PicPro import EventHandler, MemoryType, OperationCancelledError, PicPro
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from picpro_gui.project import Project
@@ -17,7 +17,7 @@ class Operation(StrEnum):
     PROGRAM = 'Program'
     VERIFY = 'Verify'
     ERASE = 'Erase'
-    READ = 'Read memory'
+    READ = 'Read memory…'
     CONFIG = 'Read configuration'
     INFO = 'Programmer information'
 
@@ -28,10 +28,11 @@ class OperationThread(QThread):
     failed = pyqtSignal(str, arguments=['message'])
     cancelled = pyqtSignal(arguments=[])
 
-    def __init__(self, operation: Operation, project: Project, service_factory: ServiceFactory) -> None:
+    def __init__(self, operation: Operation, project: Project, service_factory: ServiceFactory, *, memory: MemoryType | None = None) -> None:
         super().__init__()
         self.operation = operation
         self.project = deepcopy(project)
+        self.memory = memory
         self._service_factory = service_factory
         self._cancel = Event()
 
@@ -63,7 +64,10 @@ class OperationThread(QThread):
             service.erase(project.target, should_cancel=cancel)
             return None
         if self.operation == Operation.READ:
-            return service.read_memory(project.target, project.memory, should_cancel=cancel)
+            if self.memory is None:
+                msg = 'Choose a memory region to read.'
+                raise ValueError(msg)
+            return service.read_memory(project.target, self.memory, should_cancel=cancel)
         if self.operation == Operation.CONFIG:
             return service.read_config(project.target, should_cancel=cancel)
         return service.programmer_info(project.port, should_cancel=cancel)

@@ -19,7 +19,7 @@ from picpro.PicPro import MemoryType, OperationCancelledError, PicPro, Programme
 from picpro.protocol.ChipConfig import ChipConfig
 from PyQt6.QtCore import QThread
 from PyQt6.QtGui import QCloseEvent
-from PyQt6.QtWidgets import QApplication, QFileDialog, QMessageBox
+from PyQt6.QtWidgets import QApplication, QFileDialog, QInputDialog, QMessageBox
 
 from picpro_gui.project import Project
 from picpro_gui.socket import SocketPreviewWidget
@@ -119,7 +119,6 @@ def test_save_open_and_save_as_preserve_configuration(window: PicProGUI, tmp_pat
     window.firmware_edit.setText(str(firmware))
     window.icsp_check.setChecked(True)
     window.id_edit.setText('1234ABCD')
-    window.memory_selector.setCurrentText('EEPROM')
     fuse = window._fuse_controls['WDT']
     fuse.setCurrentIndex(fuse.findData('Disabled'))
     monkeypatch.setattr(QFileDialog, 'getSaveFileName', lambda *_args: (str(path), ''))
@@ -223,11 +222,32 @@ def test_read_exports_correct_byte_order(window: PicProGUI, application: QApplic
     output = tmp_path / ('read.bin' if binary else 'read.hex')
     monkeypatch.setattr(QFileDialog, 'getSaveFileName', lambda *_args: (str(output), ''))
     window.port_selector.setCurrentText('/dev/fake')
-    window.memory_selector.setCurrentIndex(window.memory_selector.findData(memory.value))
+    labels = {MemoryType.ROM: 'Program memory (ROM)', MemoryType.EEPROM: 'EEPROM', MemoryType.CONFIG: 'Configuration'}
+    monkeypatch.setattr(QInputDialog, 'getItem', lambda *_args, **_kwargs: (labels[memory], True))
     window.start_operation(Operation.READ)
     wait_for_operation(window, application)
+    args, _ = _factory(window).return_value.read_memory.call_args
+    assert args[1] == memory
     actual = output.read_bytes() if binary else bytes(IntelHex(str(output)).tobinarray())
     assert actual == (b'\x22\x11\x44\x33' if memory == MemoryType.ROM else b'\x11\x22\x33\x44')
+
+
+def test_read_dialog_hides_eeprom_and_cancel_leaves_project_unchanged(window: PicProGUI, monkeypatch: pytest.MonkeyPatch) -> None:
+    window.chip_selector.setCurrentText('10f200')
+    window.port_selector.setCurrentText('/dev/fake')
+    window.setWindowModified(False)
+    choose = MagicMock(return_value=('', False))
+    save = MagicMock()
+    monkeypatch.setattr(QInputDialog, 'getItem', choose)
+    monkeypatch.setattr(QFileDialog, 'getSaveFileName', save)
+
+    window.start_operation(Operation.READ)
+
+    assert choose.call_args.args[3] == ['Program memory (ROM)', 'Configuration']
+    save.assert_not_called()
+    _factory(window).assert_not_called()
+    assert window.worker is None
+    assert not window.isWindowModified()
 
 
 def test_invalid_input_prevents_worker_and_serial_access(window: PicProGUI) -> None:

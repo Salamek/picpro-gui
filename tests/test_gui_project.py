@@ -6,7 +6,6 @@ import pytest
 import yaml
 from picpro.ChipDataReader import ChipDataReader
 from picpro.exceptions import FuseError
-from picpro.PicPro import MemoryType
 
 from picpro_gui.project import Project, ProjectError
 
@@ -20,7 +19,7 @@ def test_project_round_trip_and_relative_firmware(tmp_path: Path, chips: ChipDat
     firmware = tmp_path / 'firmware.hex'
     firmware.write_text(':00000001FF\n', encoding='ascii')
     project = Project(chip='12f675', port='/dev/ttyUSB2', firmware=firmware, icsp=True,
-                      pic_id='1234ABCD', fuses={'WDT': 'Disabled'}, memory=MemoryType.EEPROM)
+                      pic_id='1234ABCD', fuses={'WDT': 'Disabled'})
     path = tmp_path / 'board.picpro.yml'
     project.save(path, chips)
     saved = yaml.safe_load(path.read_text(encoding='utf-8'))
@@ -30,6 +29,15 @@ def test_project_round_trip_and_relative_firmware(tmp_path: Path, chips: ChipDat
     assert project.target.port == '/dev/ttyUSB2'
     assert project.target.chip_name == '12f675'
     assert project.target.icsp
+
+
+def test_legacy_memory_choice_is_ignored_and_no_longer_saved(tmp_path: Path, chips: ChipDataReader) -> None:
+    path = tmp_path / 'legacy.picpro.yml'
+    path.write_text('schema_version: 1\nchip: 12f675\nmemory: eeprom\n', encoding='utf-8')
+    project = Project.load(path, chips)
+    assert project == Project()
+    project.save(path, chips)
+    assert 'memory' not in yaml.safe_load(path.read_text(encoding='utf-8'))
 
 
 def test_projects_move_with_their_firmware(tmp_path: Path, chips: ChipDataReader) -> None:
@@ -64,7 +72,7 @@ def test_blank_project_can_be_saved_without_hardware_or_firmware(tmp_path: Path,
 @pytest.mark.parametrize('changes', [
     {'schema_version': 2}, {'schema_version': True}, {'chip': 12}, {'chip': 'UNKNOWN'},
     {'port': 123}, {'firmware': ['file.hex']}, {'icsp': 'false'}, {'pic_id': 123},
-    {'fuses': []}, {'fuses': {'WDT': 1}}, {'memory': 'unknown'}, {'typo': True},
+    {'fuses': []}, {'fuses': {'WDT': 1}}, {'typo': True},
     {'pic_id': 'XX'}, {'pic_id': '12'}, {'chip': '18f2550', 'pic_id': '1234ABCD'}, {'pic_id': '0011223344'},
 ])
 def test_invalid_project_files_are_rejected(tmp_path: Path, chips: ChipDataReader, changes: dict) -> None:

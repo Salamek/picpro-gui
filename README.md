@@ -15,8 +15,8 @@ alongside a PicPro checkout, install both from this directory with
 ## Projects
 
 Use **File → New/Open/Save/Save As** to manage projects. Project files store the
-PIC type, serial port, firmware reference, ICSP mode, PIC ID, fuse overrides, and
-selected read memory. Firmware references are relative to the project file;
+PIC type, serial port, firmware reference, ICSP mode, PIC ID, and fuse overrides.
+Firmware references are relative to the project file.
 Save As recalculates them to keep referring to the same firmware. Missing
 firmware or an unplugged serial port does not prevent opening a project.
 
@@ -29,14 +29,14 @@ icsp: false
 pic_id: null
 fuses:
   WDT: Disabled
-memory: rom
 ```
 
 Fuse controls come from the selected chip definition. **From firmware** leaves
 the setting in the HEX file unchanged. Program applies overrides and verifies
 ROM/EEPROM; Verify compares ROM/EEPROM against the firmware. Read Configuration
-displays detected values without changing project settings. Memory reads export
-Intel HEX or binary files, using the same ROM byte order as CLI dumps.
+displays detected values without changing project settings. **Read memory…** lets you
+choose a region and export it as Intel HEX or binary, using the same ROM byte
+order as CLI dumps.
 
 Device operations run in a worker thread, with one active operation per window.
 The activity log shows stages and verification results. Cancel waits for the

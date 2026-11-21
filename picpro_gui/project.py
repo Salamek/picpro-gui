@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import ClassVar
 
 import yaml
-from picpro.PicPro import ChipRepository, MemoryType, Target
+from picpro.PicPro import ChipRepository, Target
 
 
 class ProjectError(ValueError):
@@ -22,7 +22,6 @@ class Project:
     icsp: bool = False
     pic_id: str | None = None
     fuses: dict[str, str] = field(default_factory=dict)
-    memory: MemoryType = MemoryType.ROM
 
     SCHEMA_VERSION: ClassVar[int] = 1
 
@@ -66,11 +65,12 @@ class Project:
         if type(version) is not int or version != cls.SCHEMA_VERSION:
             msg = f'Unsupported project schema version: {version!r}'
             raise ProjectError(msg)
+        # Older project files saved the memory choice for the next read.
         unknown = data.keys() - {'schema_version', 'chip', 'port', 'firmware', 'icsp', 'pic_id', 'fuses', 'memory'}
         if unknown:
             msg = f'Unknown project fields: {", ".join(str(key) for key in unknown)}'
             raise ProjectError(msg)
-        for name, default in [('chip', None), ('port', ''), ('memory', 'rom')]:
+        for name, default in [('chip', None), ('port', '')]:
             if not isinstance(data.get(name, default), str):
                 msg = f'{name} must be a string.'
                 raise ProjectError(msg)
@@ -85,16 +85,11 @@ class Project:
         if not isinstance(fuses, dict) or any(not isinstance(k, str) or not isinstance(v, str) for k, v in fuses.items()):
             msg = 'fuses must map fuse names to setting names.'
             raise ProjectError(msg)
-        try:
-            memory = MemoryType(data.get('memory', 'rom'))
-        except ValueError as error:
-            msg = 'memory must be rom, eeprom, or config.'
-            raise ProjectError(msg) from error
         firmware = Path(data['firmware']) if data.get('firmware') else None
         if firmware is not None:
             firmware = (path.parent / firmware).resolve()
         project = cls(chip=data['chip'], port=data.get('port', ''), firmware=firmware,
-                      icsp=data.get('icsp', False), pic_id=data.get('pic_id'), fuses=dict(fuses), memory=memory)
+                      icsp=data.get('icsp', False), pic_id=data.get('pic_id'), fuses=dict(fuses))
         project.validate(chips)
         return project
 
@@ -109,7 +104,7 @@ class Project:
                 firmware = str(self.firmware.resolve())
         data = {'schema_version': self.SCHEMA_VERSION, 'chip': self.chip, 'port': self.port,
                 'firmware': firmware, 'icsp': self.icsp, 'pic_id': self.pic_id,
-                'fuses': dict(self.fuses), 'memory': self.memory.value}
+                'fuses': dict(self.fuses)}
         temporary = None
         try:
             with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=path.parent, prefix=f'.{path.name}.', delete=False) as file:

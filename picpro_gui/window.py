@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QMainWindow,
@@ -147,11 +148,6 @@ class PicProGUI(QMainWindow):
         self.id_edit.setPlaceholderText('From firmware')
         self.id_edit.textChanged.connect(self._edited)
         form.addRow('PIC ID (hex)', self.id_edit)
-        self.memory_selector = QComboBox()
-        for memory in MemoryType:
-            self.memory_selector.addItem(memory.value.upper(), memory.value)
-        self.memory_selector.currentIndexChanged.connect(self._edited)
-        form.addRow('Read memory', self.memory_selector)
         settings_layout.addWidget(target)
         self.fuse_group = QGroupBox('Fuse overrides')
         self.fuse_form = QFormLayout(self.fuse_group)
@@ -288,8 +284,7 @@ class PicProGUI(QMainWindow):
         return Project(chip=self.chip_selector.currentText().strip().lower(), port=self.port_selector.currentText().strip(),
                        firmware=(base / firmware).resolve() if firmware else None,
                        icsp=self.icsp_check.isChecked(), pic_id=self.id_edit.text().strip() or None,
-                       fuses={name: control.currentData() for name, control in self._fuse_controls.items() if control.currentData() is not None},
-                       memory=MemoryType(self.memory_selector.currentData()))
+                       fuses={name: control.currentData() for name, control in self._fuse_controls.items() if control.currentData() is not None})
 
     def _apply_project(self, project: Project, path: Path | None = None) -> None:
         self._loading = True
@@ -299,7 +294,6 @@ class PicProGUI(QMainWindow):
         self.firmware_edit.setText(str(project.firmware) if project.firmware else '')
         self.icsp_check.setChecked(project.icsp)
         self.id_edit.setText(project.pic_id or '')
-        self.memory_selector.setCurrentIndex(self.memory_selector.findData(project.memory.value))
         self._rebuild_fuses(project.fuses)
         self._saved_project = self._collect_project()
         self._loading = False
@@ -406,10 +400,15 @@ class PicProGUI(QMainWindow):
         if operation in (Operation.PROGRAM, Operation.VERIFY) and (project.firmware is None or not project.firmware.is_file()):
             msg = 'Choose an existing Intel HEX firmware file first.'
             raise ProjectError(msg)
-        if operation == Operation.READ and project.memory == MemoryType.EEPROM and not self.service.get_chip(project.chip).has_eeprom:
-            msg = 'This chip has no EEPROM.'
-            raise ProjectError(msg)
         return project
+
+    def _choose_read_region(self, project: Project) -> MemoryType | None:
+        regions = {'Program memory (ROM)': MemoryType.ROM}
+        if self.service.get_chip(project.chip).has_eeprom:
+            regions['EEPROM'] = MemoryType.EEPROM
+        regions['Configuration'] = MemoryType.CONFIG
+        label, accepted = QInputDialog.getItem(self, 'Read memory', 'Memory region', list(regions), current=0, editable=False)
+        return regions[label] if accepted else None
 
     def start_operation(self, operation: Operation) -> None:
         if self.worker is not None:
@@ -424,8 +423,12 @@ class PicProGUI(QMainWindow):
                                                                QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
             return
         self._output_file = None
+        memory = None
         if operation == Operation.READ:
-            filename, selected_filter = QFileDialog.getSaveFileName(self, 'Export memory readback', f'{project.chip}-{project.memory.value}.hex',
+            memory = self._choose_read_region(project)
+            if memory is None:
+                return
+            filename, selected_filter = QFileDialog.getSaveFileName(self, 'Export memory readback', f'{project.chip}-{memory.value}.hex',
                                                      'Intel HEX (*.hex);;Binary (*.bin)')
             if not filename:
                 return
@@ -434,7 +437,7 @@ class PicProGUI(QMainWindow):
                 suffix = '.bin' if selected_filter.startswith('Binary') else '.hex'
                 self._output_file = self._output_file.with_suffix(suffix)
         self._preview_timer.stop()
-        self.worker = OperationThread(operation, project, self._service_factory)
+        self.worker = OperationThread(operation, project, self._service_factory, memory=memory)
         self.worker.progress_event.connect(self._on_event)
         self.worker.succeeded.connect(self._on_success)
         self.worker.failed.connect(self._operation_failed)
@@ -490,7 +493,7 @@ class PicProGUI(QMainWindow):
                 self._error('Verification failed', 'Device contents differ from the firmware. See the activity log.')
                 return
             if isinstance(result, bytes) and self.worker is not None:
-                data = swab_bytes(result) if self.worker.project.memory == MemoryType.ROM else result
+                data = swab_bytes(result) if self.worker.memory == MemoryType.ROM else result
                 self.readback.setPlainText(hex_dump(data))
                 self.tabs.setCurrentWidget(self.readback)
                 if self._output_file is not None:
