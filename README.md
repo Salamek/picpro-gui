@@ -36,7 +36,9 @@ the setting in the HEX file unchanged. Program applies overrides and verifies
 ROM/EEPROM; Verify compares ROM/EEPROM against the firmware. Read Configuration
 displays detected values without changing project settings. **Read memory…** lets you
 choose a region and export it as Intel HEX or binary, using the same ROM byte
-order as CLI dumps.
+order as CLI dumps. With a PicPro version that supports `dump all`, the same
+dialog offers **All memory (Intel HEX backup)**. It saves the readable
+programmable regions at their firmware HEX addresses in one file.
 
 Device operations run in a worker thread, with one active operation per window.
 The activity log shows stages and verification results. Cancel waits for the

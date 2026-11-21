@@ -164,12 +164,17 @@ def test_port_refresh_preserves_manual_and_unavailable_ports(window: PicProGUI, 
     assert window.port_selector.itemText(0) == '/dev/ttyUSB0'
 
 
-def test_icsp_only_chip_has_no_socket_preview(window: PicProGUI) -> None:
+def test_switching_from_icsp_only_chip_defaults_to_socket(window: PicProGUI) -> None:
     chip = next(chip for chip in window.service.list_chips().values() if chip.icsp_only)
     window.chip_selector.setCurrentText(chip.chip_name)
     assert window.icsp_check.isChecked()
     assert not window.icsp_check.isEnabled()
     assert window.socket_preview.chip_pins is None
+
+    window.chip_selector.setCurrentText('12f675')
+    assert window.icsp_check.isEnabled()
+    assert not window.icsp_check.isChecked()
+    assert window.socket_preview.chip_pins == 8
 
 
 def test_firmware_preview_uses_core_without_hardware(window: PicProGUI, hex_file_path: Path) -> None:
@@ -243,7 +248,9 @@ def test_read_dialog_hides_eeprom_and_cancel_leaves_project_unchanged(window: Pi
 
     window.start_operation(Operation.READ)
 
-    assert choose.call_args.args[3] == ['Program memory (ROM)', 'Configuration']
+    choices = choose.call_args.args[3]
+    assert 'EEPROM' not in choices
+    assert choices[-2:] == ['Program memory (ROM)', 'Configuration']
     save.assert_not_called()
     _factory(window).assert_not_called()
     assert window.worker is None
@@ -408,3 +415,25 @@ def test_loaded_uppercase_chip_does_not_create_false_unsaved_changes(window: Pic
     assert window.isWindowModified()
     window.port_selector.setCurrentText('')
     assert not window.isWindowModified()
+
+
+@pytest.mark.skipif(not hasattr(PicPro, 'read_backup'), reason='Requires the core backup API')
+def test_read_all_saves_addressed_hex(window: PicProGUI, application: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    image = IntelHex({0: 0x83, 1: 0x12, 0x4200: 0x11})
+    output = tmp_path / 'backup.hex'
+    fake = _factory(window).return_value
+    fake.read_backup.return_value = image
+    choose = MagicMock(return_value=('All memory (Intel HEX backup)', True))
+    save = MagicMock(return_value=(str(output), 'Intel HEX (*.hex)'))
+    monkeypatch.setattr(QInputDialog, 'getItem', choose)
+    monkeypatch.setattr(QFileDialog, 'getSaveFileName', save)
+    window.port_selector.setCurrentText('/dev/fake')
+
+    window.start_operation(Operation.READ)
+    wait_for_operation(window, application)
+
+    assert 'All memory (Intel HEX backup)' in choose.call_args.args[3]
+    assert save.call_args.args[3] == 'Intel HEX (*.hex)'
+    fake.read_backup.assert_called_once()
+    fake.read_memory.assert_not_called()
+    assert IntelHex(str(output)).todict() == image.todict()

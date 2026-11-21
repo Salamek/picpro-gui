@@ -4,6 +4,7 @@ from collections.abc import Callable
 from copy import deepcopy
 from enum import StrEnum
 from threading import Event
+from typing import Literal
 
 from picpro.PicPro import EventHandler, MemoryType, OperationCancelledError, PicPro
 from PyQt6.QtCore import QThread, pyqtSignal
@@ -11,6 +12,7 @@ from PyQt6.QtCore import QThread, pyqtSignal
 from picpro_gui.project import Project
 
 ServiceFactory = Callable[[EventHandler], PicPro]
+ReadRegion = MemoryType | Literal['all']
 
 
 class Operation(StrEnum):
@@ -28,7 +30,7 @@ class OperationThread(QThread):
     failed = pyqtSignal(str, arguments=['message'])
     cancelled = pyqtSignal(arguments=[])
 
-    def __init__(self, operation: Operation, project: Project, service_factory: ServiceFactory, *, memory: MemoryType | None = None) -> None:
+    def __init__(self, operation: Operation, project: Project, service_factory: ServiceFactory, *, memory: ReadRegion | None = None) -> None:
         super().__init__()
         self.operation = operation
         self.project = deepcopy(project)
@@ -67,6 +69,12 @@ class OperationThread(QThread):
             if self.memory is None:
                 msg = 'Choose a memory region to read.'
                 raise ValueError(msg)
+            if self.memory == 'all':
+                read_backup = getattr(service, 'read_backup', None)
+                if read_backup is None:
+                    msg = 'Whole-chip backups require a newer version of PicPro.'
+                    raise ValueError(msg)
+                return read_backup(project.target, should_cancel=cancel)
             return service.read_memory(project.target, self.memory, should_cancel=cancel)
         if self.operation == Operation.CONFIG:
             return service.read_config(project.target, should_cancel=cancel)

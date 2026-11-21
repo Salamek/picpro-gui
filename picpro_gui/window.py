@@ -35,7 +35,7 @@ from serial.tools.list_ports import comports
 
 from picpro_gui.project import Project, ProjectError
 from picpro_gui.socket import SocketPreviewWidget
-from picpro_gui.worker import Operation, OperationThread, ServiceFactory
+from picpro_gui.worker import Operation, OperationThread, ReadRegion, ServiceFactory
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -262,8 +262,8 @@ class PicProGUI(QMainWindow):
             self.fuse_form.addRow(name, control)
             self._fuse_controls[name] = control
         self.icsp_check.setEnabled(not chip.icsp_only)
-        if chip.icsp_only:
-            self.icsp_check.setChecked(True)
+        if chip.icsp_only or not self._loading:
+            self.icsp_check.setChecked(chip.icsp_only)
         self._update_socket()
 
     def _update_socket(self) -> None:
@@ -402,8 +402,12 @@ class PicProGUI(QMainWindow):
             raise ProjectError(msg)
         return project
 
-    def _choose_read_region(self, project: Project) -> MemoryType | None:
-        regions = {'Program memory (ROM)': MemoryType.ROM}
+    def _choose_read_region(self, project: Project) -> ReadRegion | None:
+        regions: dict[str, ReadRegion] = {}
+        # PicPro 0.5.0 still supports individual reads.
+        if hasattr(self.service, 'read_backup'):
+            regions['All memory (Intel HEX backup)'] = 'all'
+        regions['Program memory (ROM)'] = MemoryType.ROM
         if self.service.get_chip(project.chip).has_eeprom:
             regions['EEPROM'] = MemoryType.EEPROM
         regions['Configuration'] = MemoryType.CONFIG
@@ -428,14 +432,18 @@ class PicProGUI(QMainWindow):
             memory = self._choose_read_region(project)
             if memory is None:
                 return
-            filename, selected_filter = QFileDialog.getSaveFileName(self, 'Export memory readback', f'{project.chip}-{memory.value}.hex',
-                                                     'Intel HEX (*.hex);;Binary (*.bin)')
+            tag = memory if memory == 'all' else memory.value
+            formats = 'Intel HEX (*.hex)' if memory == 'all' else 'Intel HEX (*.hex);;Binary (*.bin)'
+            filename, selected_filter = QFileDialog.getSaveFileName(self, 'Export memory readback', f'{project.chip}-{tag}.hex', formats)
             if not filename:
                 return
             self._output_file = Path(filename)
             if not self._output_file.suffix:
                 suffix = '.bin' if selected_filter.startswith('Binary') else '.hex'
                 self._output_file = self._output_file.with_suffix(suffix)
+            if memory == 'all' and self._output_file.suffix.lower() != '.hex':
+                self._error('Unable to export backup', 'Choose an Intel HEX filename ending in .hex.')
+                return
         self._preview_timer.stop()
         self.worker = OperationThread(operation, project, self._service_factory, memory=memory)
         self.worker.progress_event.connect(self._on_event)
@@ -504,6 +512,12 @@ class PicProGUI(QMainWindow):
                         image.frombytes(data)
                         image.write_hex_file(str(self._output_file))
                     self.log.appendPlainText(f'Saved readback to {self._output_file}')
+            elif isinstance(result, IntelHex) and self._output_file is not None:
+                result.write_hex_file(str(self._output_file))
+                regions = '\n'.join(f'0x{start:06X} to 0x{end - 1:06X}' for start, end in result.segments())
+                self.readback.setPlainText(f'Backup saved to {self._output_file}\n\nHEX byte ranges\n{regions}')
+                self.tabs.setCurrentWidget(self.readback)
+                self.log.appendPlainText(f'Saved backup to {self._output_file}')
             elif isinstance(result, ChipConfig):
                 chip = self.service.get_chip(self._collect_project().chip)
                 self.readback.setPlainText(f'Chip ID: {result.chip_id:#x}\nPIC ID: {result.id.hex()}\nCalibration: {result.calibrate:#x}\n\n'
