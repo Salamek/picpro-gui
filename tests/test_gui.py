@@ -17,7 +17,7 @@ pytest.importorskip('PyQt6.QtWidgets')
 from picpro.ChipDataReader import ChipDataReader
 from picpro.PicPro import MemoryType, OperationCancelledError, PicPro, ProgrammerInfo, Stage, StageEvent, VerificationResult
 from picpro.protocol.ChipConfig import ChipConfig
-from PyQt6.QtCore import QThread
+from PyQt6.QtCore import QSettings, QThread
 from PyQt6.QtGui import QCloseEvent
 from PyQt6.QtWidgets import QApplication, QFileDialog, QInputDialog, QMessageBox
 
@@ -55,7 +55,7 @@ def _factory(window: PicProGUI) -> MagicMock:
 
 
 @pytest.fixture
-def window(application: QApplication, gui_service: PicPro, monkeypatch: pytest.MonkeyPatch) -> Iterator[PicProGUI]:
+def window(application: QApplication, gui_service: PicPro, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[PicProGUI]:
     monkeypatch.setattr(QMessageBox, 'critical', MagicMock())
     monkeypatch.setattr(QMessageBox, 'information', MagicMock())
     monkeypatch.setattr(QMessageBox, 'question', MagicMock(return_value=QMessageBox.StandardButton.Discard))
@@ -65,7 +65,8 @@ def window(application: QApplication, gui_service: PicPro, monkeypatch: pytest.M
     fake.program.return_value = VerificationResult(rom_matches=True, eeprom_matches=True)
     fake.verify.return_value = VerificationResult(rom_matches=True, eeprom_matches=True)
     fake.read_memory.return_value = b'\x11\x22\x33\x44'
-    gui = PicProGUI(service, MagicMock(return_value=fake))
+    settings = QSettings(str(tmp_path / 'settings.ini'), QSettings.Format.IniFormat)
+    gui = PicProGUI(service, MagicMock(return_value=fake), settings=settings)
     gui.show()
     application.processEvents()
     yield gui
@@ -437,3 +438,70 @@ def test_read_all_saves_addressed_hex(window: PicProGUI, application: QApplicati
     fake.read_backup.assert_called_once()
     fake.read_memory.assert_not_called()
     assert IntelHex(str(output)).todict() == image.todict()
+
+
+def test_reopens_last_saved_project_in_new_window(window: PicProGUI, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    path = tmp_path / 'board.picpro.yml'
+    monkeypatch.setattr(QFileDialog, 'getSaveFileName', lambda *_args: (str(path), ''))
+    window.port_selector.setCurrentText('/dev/saved')
+    assert window.save_project()
+    assert window.close()
+    restored = PicProGUI(window.service, settings=QSettings(str(tmp_path / 'settings.ini'), QSettings.Format.IniFormat))
+    restored.restore_last_project()
+    assert restored.project_path == path
+    assert restored.port_selector.currentText() == '/dev/saved'
+    assert not restored.isWindowModified()
+    restored.close()
+
+
+def test_recent_projects_keep_latest_five_and_reopen_latest(
+    window: PicProGUI, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    paths = [tmp_path / f'board-{index}.picpro.yml' for index in range(6)]
+    for path in paths:
+        monkeypatch.setattr(QFileDialog, 'getSaveFileName', lambda *_args, filename=str(path): (filename, ''))
+        assert window.save_project(save_as=True)
+
+    window._recent_menu.aboutToShow.emit()
+    assert [action.text() for action in window._recent_menu.actions()] == [str(path) for path in reversed(paths[1:])]
+    window.port_selector.setCurrentText('/dev/unsaved')
+    monkeypatch.setattr(QMessageBox, 'question', lambda *_args: QMessageBox.StandardButton.Cancel)
+    window._recent_menu.actions()[-1].trigger()
+    assert window.project_path == paths[-1]
+    assert window.isWindowModified()
+
+    monkeypatch.setattr(QMessageBox, 'question', lambda *_args: QMessageBox.StandardButton.Discard)
+    window._recent_menu.actions()[-1].trigger()
+    assert window.project_path == paths[1]
+    assert not window.isWindowModified()
+    restored = PicProGUI(window.service, settings=QSettings(str(tmp_path / 'settings.ini'), QSettings.Format.IniFormat))
+    restored.restore_last_project()
+    assert restored.project_path == paths[1]
+    restored._recent_menu.aboutToShow.emit()
+    assert [action.text() for action in restored._recent_menu.actions()] == [str(paths[1]), *(str(path) for path in reversed(paths[2:]))]
+    restored.close()
+
+
+def test_startup_skips_missing_recent_project(window: PicProGUI, tmp_path: Path) -> None:
+    path = tmp_path / 'board.picpro.yml'
+    Project().save(path, window.service.chip_data)
+    settings = QSettings(str(tmp_path / 'settings.ini'), QSettings.Format.IniFormat)
+    settings.setValue('projects/recent_paths', [str(tmp_path / 'missing.picpro.yml'), str(path)])
+    restored = PicProGUI(window.service, settings=settings)
+    restored.restore_last_project()
+    assert restored.project_path == path
+    assert settings.value('projects/recent_paths', type=list) == [str(path)]
+    restored.close()
+
+
+def test_migrates_legacy_last_project_setting(window: PicProGUI, tmp_path: Path) -> None:
+    path = tmp_path / 'legacy.picpro.yml'
+    Project().save(path, window.service.chip_data)
+    settings = QSettings(str(tmp_path / 'settings.ini'), QSettings.Format.IniFormat)
+    settings.setValue('projects/last_path', str(path))
+    restored = PicProGUI(window.service, settings=settings)
+    restored.restore_last_project()
+    assert restored.project_path == path
+    assert settings.value('projects/recent_paths', type=list) == [str(path)]
+    assert not settings.contains('projects/last_path')
+    restored.close()

@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QPlainTextEdit,
     QProgressBar,
@@ -40,6 +41,11 @@ from picpro_gui.worker import Operation, OperationThread, ReadRegion, ServiceFac
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from PyQt6.QtCore import QSettings
+
+_LAST_PROJECT_KEY = 'projects/last_path'
+_RECENT_PROJECTS_KEY = 'projects/recent_paths'
+_RECENT_PROJECT_LIMIT = 10
 _PROJECT_FILTER = 'PicPro projects (*.picpro.yml);;YAML files (*.yml *.yaml);;All files (*)'
 _SOCKET_PACKAGES = {'dip8': 8, 'dip14': 14, 'dip18': 18, 'dip28': 28, 'dip40': 40,
                     '8pin': 8, '14pin': 14, '18pin': 18, '28Npin': 28, '40pin': 40}
@@ -57,8 +63,11 @@ def hex_dump(data: bytes) -> str:
 
 
 class PicProGUI(QMainWindow):
-    def __init__(self, service: PicPro | None = None, service_factory: ServiceFactory | None = None) -> None:
+    def __init__(
+        self, service: PicPro | None = None, service_factory: ServiceFactory | None = None, *, settings: 'QSettings | None' = None,
+    ) -> None:
         super().__init__()
+        self._settings = settings
         self.service = service if service is not None else PicPro()
         repository = self.service.chip_data
         self._chips = self.service.list_chips()
@@ -70,6 +79,10 @@ class PicProGUI(QMainWindow):
         self._fuse_controls: dict[str, QComboBox] = {}
         self._fuse_chip: str | None = None
         self._project_actions: list[QAction] = []
+        self._recent_projects = self._load_recent_projects()
+        self._recent_menu = QMenu('Open &Recent Project', self)
+        self._recent_menu.aboutToShow.connect(self._populate_recent_menu)
+        self._recent_menu.setEnabled(bool(self._recent_projects))
         self.status = QStatusBar(self)
         self.setStatusBar(self.status)
         self.resize(1100, 800)
@@ -106,6 +119,8 @@ class PicProGUI(QMainWindow):
             action.triggered.connect(callback)
             file_menu.addAction(action)
             self._project_actions.append(action)
+            if shortcut == QKeySequence.StandardKey.Open:
+                file_menu.addMenu(self._recent_menu)
         file_menu.addSeparator()
         exit_action = file_menu.addAction('E&xit')
         if exit_action is not None:
@@ -300,6 +315,8 @@ class PicProGUI(QMainWindow):
         self.setWindowModified(False)
         self._update_title()
         self._preview()
+        if path is not None:
+            self._store_recent_projects([path, *(recent for recent in self._recent_projects if recent != path)])
 
     def _update_title(self) -> None:
         name = self.project_path.name if self.project_path else 'Untitled project'
@@ -354,6 +371,39 @@ class PicProGUI(QMainWindow):
         filename, _ = QFileDialog.getOpenFileName(self, 'Open project', '', _PROJECT_FILTER)
         if filename:
             self.load_project(Path(filename))
+
+    def _load_recent_projects(self) -> list[Path]:
+        if self._settings is None:
+            return []
+        paths = self._settings.value(_RECENT_PROJECTS_KEY, [], type=list)
+        if not paths:
+            previous = self._settings.value(_LAST_PROJECT_KEY, '', type=str)
+            paths = [previous] if previous else []
+        return list(dict.fromkeys(Path(path) for path in paths if isinstance(path, str) and path))[:_RECENT_PROJECT_LIMIT]
+
+    def _store_recent_projects(self, paths: list[Path]) -> None:
+        self._recent_projects = paths[:_RECENT_PROJECT_LIMIT]
+        if self._settings is not None:
+            self._settings.setValue(_RECENT_PROJECTS_KEY, [str(path) for path in self._recent_projects])
+            self._settings.remove(_LAST_PROJECT_KEY)
+        self._recent_menu.setEnabled(self.worker is None and bool(self._recent_projects))
+
+    def _populate_recent_menu(self) -> None:
+        self._recent_menu.clear()
+        for path in self._recent_projects:
+            action = QAction(str(path).replace('&', '&&'), self._recent_menu)
+            action.triggered.connect(lambda _checked=False, project_path=path: self._open_recent_project(project_path))
+            self._recent_menu.addAction(action)
+
+    def _open_recent_project(self, path: Path) -> None:
+        if self.worker is None and self._confirm_discard():
+            self.load_project(path)
+
+    def restore_last_project(self) -> None:
+        for path in self._recent_projects[:]:
+            if path.is_file() and self.load_project(path):
+                return
+            self._store_recent_projects([recent for recent in self._recent_projects if recent != path])
 
     def load_project(self, path: Path) -> bool:
         if self.worker is not None:
@@ -461,6 +511,7 @@ class PicProGUI(QMainWindow):
         self.settings.setEnabled(not busy)
         for action in self._project_actions:
             action.setEnabled(not busy)
+        self._recent_menu.setEnabled(not busy and bool(self._recent_projects))
         for button in self.operation_buttons.values():
             button.setEnabled(not busy)
         self.cancel_button.setEnabled(busy)

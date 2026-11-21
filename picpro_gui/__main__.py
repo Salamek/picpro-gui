@@ -10,6 +10,7 @@ def main() -> int:
     parser.add_argument('project', nargs='?', type=Path, help='Project file to open')
     arguments = parser.parse_args()
     try:
+        from PyQt6.QtCore import QSettings  # noqa: PLC0415 - load Qt only when launching
         from PyQt6.QtWidgets import QApplication, QMessageBox  # noqa: PLC0415 - load Qt only when launching
 
         from picpro_gui.window import PicProGUI  # noqa: PLC0415 - keep Qt out of core imports
@@ -22,12 +23,14 @@ def main() -> int:
     app.setApplicationName('PicPro')
     app.setOrganizationName('PicPro')
     try:
-        window = PicProGUI()
+        window = PicProGUI(settings=QSettings())
     except Exception as error:  # noqa: BLE001 - report startup failures before the event loop starts
         QMessageBox.critical(None, 'Unable to start PicPro', str(error))
         return 1
     if arguments.project is not None:
         window.load_project(arguments.project)
+    else:
+        window.restore_last_project()
     window.show()
     return app.exec()
 
