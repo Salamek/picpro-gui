@@ -5,7 +5,7 @@ pkgdesc='Qt desktop interface for the PicPro PIC programmer'
 arch=('any')
 url='https://github.com/Salamek/picpro'
 license=('GPL-2.0-only')
-depends=('picpro>=0.5.0' 'python' 'python-pyqt6' 'python-pyserial' 'python-intelhex' 'python-yaml')
+depends=('picpro>=0.5.0' 'python' 'python-pyqt6' 'python-pyserial' 'python-intelhex' 'python-yaml' 'shared-mime-info' 'desktop-file-utils')
 makedepends=('python-build' 'python-installer' 'python-setuptools' 'python-wheel')
 checkdepends=('python-pytest')
 
@@ -29,4 +29,5 @@ package() {
     cd "$srcdir/$pkgname"
     python -m installer --destdir="$pkgdir" dist/*.whl
     install -Dm644 "$startdir/data/picpro-gui.desktop" "$pkgdir/usr/share/applications/picpro-gui.desktop"
+    install -Dm644 "$startdir/data/picpro-project.xml" "$pkgdir/usr/share/mime/packages/picpro-project.xml"
 }

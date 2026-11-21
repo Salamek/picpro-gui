@@ -13,7 +13,7 @@ Package: picpro-gui
 Architecture: all
 Depends: ${misc:Depends}, ${python3:Depends},
  python3-picpro (>= 0.5.0), python3-pyqt6 (>= 6.5),
- python3-serial, python3-intelhex, python3-yaml
+ python3-serial, python3-intelhex, python3-yaml, shared-mime-info, desktop-file-utils
 Description: Qt desktop interface for the PicPro PIC programmer
  Save programming projects and program, verify, erase, or read supported
  PIC microcontrollers using the PicPro programming service.
