@@ -29,5 +29,6 @@ package() {
     cd "$srcdir/$pkgname"
     python -m installer --destdir="$pkgdir" dist/*.whl
     install -Dm644 "$startdir/data/picpro-gui.desktop" "$pkgdir/usr/share/applications/picpro-gui.desktop"
+    install -Dm644 "$startdir/data/picpro-gui.svg" "$pkgdir/usr/share/icons/hicolor/scalable/apps/picpro-gui.svg"
     install -Dm644 "$startdir/data/picpro-project.xml" "$pkgdir/usr/share/mime/packages/picpro-project.xml"
 }

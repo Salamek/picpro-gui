@@ -1,2 +1,2 @@
 recursive-include tests *.py *.hex
-include data/picpro-gui.desktop data/picpro-project.xml
+include data/picpro-gui.desktop data/picpro-gui.svg data/picpro-project.xml

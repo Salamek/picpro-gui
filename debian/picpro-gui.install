@@ -1,2 +1,3 @@
 data/picpro-gui.desktop usr/share/applications/
+data/picpro-gui.svg usr/share/icons/hicolor/scalable/apps/
 data/picpro-project.xml usr/share/mime/packages/
