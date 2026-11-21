@@ -4,7 +4,7 @@ from collections.abc import Callable
 from copy import deepcopy
 from enum import StrEnum
 from threading import Event
-from typing import Literal
+from typing import Literal, TypeAlias
 
 from picpro.PicPro import EventHandler, MemoryType, OperationCancelledError, PicPro
 from PyQt6.QtCore import QThread, pyqtSignal
@@ -12,7 +12,7 @@ from PyQt6.QtCore import QThread, pyqtSignal
 from picpro_gui.project import Project
 
 ServiceFactory = Callable[[EventHandler], PicPro]
-ReadRegion = MemoryType | Literal['all']
+ReadRegion: TypeAlias = MemoryType | Literal['all']
 
 
 class Operation(StrEnum):
