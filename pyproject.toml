@@ -4,11 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "picpro-gui"
-version = "0.1.0"
 description = "Qt desktop interface for the PicPro PIC programmer"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "GPL-2.0-only"
+dynamic = ["version"]
 dependencies = ["picpro>=0.5.0", "PyQt6>=6.5", "pyserial", "intelhex", "pyyaml"]
 
 [project.optional-dependencies]
@@ -20,6 +20,9 @@ picpro-gui = "picpro_gui.__main__:main"
 
 [tool.setuptools.packages.find]
 include = ["picpro_gui", "picpro_gui.*"]
+
+[tool.setuptools.dynamic]
+version = {attr = "picpro_gui.__version__"}
 
 [tool.ruff]
 line-length = 170
