@@ -4,10 +4,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from intelhex import IntelHex
+from picpro.exceptions import FuseError
 from picpro.PicPro import ChipConfigEvent, MemoryType, PicPro, PicProEvent, ProgrammerInfo, StageEvent, VerificationEvent, VerificationResult
 from picpro.protocol.ChipConfig import ChipConfig
 from picpro.tools import swab_bytes
-from PyQt6.QtCore import Qt, QTimer, pyqtSlot
+from PyQt6.QtCore import QSignalBlocker, Qt, QTimer, pyqtSlot
 from PyQt6.QtGui import QAction, QCloseEvent, QFontDatabase, QKeySequence
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -41,6 +42,7 @@ from picpro_gui.worker import Operation, OperationThread, ReadRegion, ServiceFac
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from picpro.ChipInfoEntry import ChipInfoEntry
     from PyQt6.QtCore import QSettings
 
 _LAST_PROJECT_KEY = 'projects/last_path'
@@ -77,6 +79,7 @@ class PicProGUI(QMainWindow):
         self._output_file: Path | None = None
         self._loading = True
         self._fuse_controls: dict[str, QComboBox] = {}
+        self._fuse_override_labels: dict[str, QLabel] = {}
         self._fuse_chip: str | None = None
         self._project_actions: list[QAction] = []
         self._recent_projects = self._load_recent_projects()
@@ -170,7 +173,7 @@ class PicProGUI(QMainWindow):
         scroll.setWidgetResizable(True)
         scroll.setWidget(self.fuse_group)
         settings_layout.addWidget(scroll, 1)
-        hint = QLabel('“From firmware” keeps the setting in the HEX file.\nProgram applies overrides; Verify checks ROM and EEPROM.')
+        hint = QLabel('Choose the firmware or inherited default value to clear an override.\nProgram applies overrides; Verify checks ROM and EEPROM.')
         hint.setWordWrap(True)
         settings_layout.addWidget(hint)
         splitter.addWidget(self.settings)
@@ -264,22 +267,54 @@ class PicProGUI(QMainWindow):
             self.chip_summary.setText('Choose a supported PIC type.')
             return
         self._fuse_controls.clear()
+        self._fuse_override_labels.clear()
         while self.fuse_form.rowCount():
             self.fuse_form.removeRow(0)
         self._fuse_chip = chip.chip_name.lower()
-        for name, choices in chip.fuses.items():
+        for name in chip.fuses:
             control = QComboBox()
-            control.addItem('From firmware', None)
-            for value in choices:
-                control.addItem(value, value)
-            control.setCurrentIndex(control.findData(overrides.get(name)))
-            control.currentIndexChanged.connect(self._edited)
-            self.fuse_form.addRow(name, control)
+            override_label = QLabel('Override')
+            self.fuse_form.addRow(name, self._row(control, override_label))
             self._fuse_controls[name] = control
+            self._fuse_override_labels[name] = override_label
+            control.currentIndexChanged.connect(self._edited)
+        self._set_fuse_options(chip, overrides)
         self.icsp_check.setEnabled(not chip.icsp_only)
         if chip.icsp_only or not self._loading:
             self.icsp_check.setChecked(chip.icsp_only)
         self._update_socket()
+
+    def _set_fuse_options(
+        self, chip: 'ChipInfoEntry', overrides: dict[str, str], firmware: dict[str, str] | None = None, *, unknown: bool = False,
+    ) -> None:
+        try:
+            defaults = chip.decode_fuse_data(chip.fuse_blank)
+        except FuseError:
+            defaults = {}
+        for name, control in self._fuse_controls.items():
+            default = defaults.get(name)
+            override = overrides.get(name)
+            inherited = None if unknown else (firmware.get(name) if firmware is not None else default)
+            if inherited is None:
+                inherited_label = 'Use firmware or default' if unknown else 'Use default'
+            elif firmware is None:
+                inherited_label = f'{inherited} (Default)'
+            elif inherited == default:
+                inherited_label = f'{inherited} (From firmware, Default)'
+            else:
+                inherited_label = f'{inherited} (From firmware)'
+            with QSignalBlocker(control):
+                control.clear()
+                control.addItem(inherited_label, None)
+                for value in chip.fuses[name]:
+                    if value == inherited and value != override:
+                        continue
+                    label = f'{value} (Default)' if value == default else value
+                    if value == inherited:
+                        label += ' [explicit]'
+                    control.addItem(label, value)
+                control.setCurrentIndex(control.findData(override))
+            self._fuse_override_labels[name].setVisible(control.currentData() is not None)
 
     def _update_socket(self) -> None:
         try:
@@ -325,6 +360,8 @@ class PicProGUI(QMainWindow):
     def _edited(self) -> None:
         if self._loading:
             return
+        for name, control in self._fuse_controls.items():
+            self._fuse_override_labels[name].setVisible(control.currentData() is not None)
         self.setWindowModified(self._collect_project() != self._saved_project)
         self._update_socket()
         self._preview_timer.start()
@@ -336,17 +373,33 @@ class PicProGUI(QMainWindow):
 
     def _preview(self) -> None:
         project = self._collect_project()
+        chip = self._chips.get(project.chip) if project.chip == self._fuse_chip else None
         if project.firmware is None:
+            if chip is not None:
+                self._set_fuse_options(chip, project.fuses)
             self.preview.clear()
             return
         try:
             project.validate(self.service.chip_data)
-            data = self.service.inspect_hex(project.chip, project.firmware, pic_id=project.pic_id, fuses=project.fuses)
+            data = self.service.inspect_hex(project.chip, project.firmware, pic_id=project.pic_id)
+            if chip is not None:
+                firmware_fuses = None
+                unknown = data.fuse_buffer.raw_size != 0
+                if data.fuse_buffer.raw_size == data.fuse_buffer.size and unknown:
+                    try:
+                        firmware_fuses = chip.decode_fuse_data(data.fuse_data)
+                    except FuseError:
+                        pass
+                    else:
+                        unknown = False
+                self._set_fuse_options(chip, project.fuses, firmware_fuses, unknown=unknown)
             content = (f'ROM: {data.rom_buffer.raw_size} / {data.chip_info.rom_size} bytes used\n'
                        f'EEPROM: {data.eeprom_buffer.raw_size} / {data.chip_info.eeprom_size} bytes used\n\n'
                        f'ROM (device byte order)\n{hex_dump(data.rom_data)}\n\nEEPROM\n{hex_dump(data.eeprom_data)}')
             self.preview.setPlainText(content)
         except Exception as error:  # noqa: BLE001 - present malformed or inaccessible firmware without breaking the event loop
+            if chip is not None:
+                self._set_fuse_options(chip, project.fuses, unknown=True)
             self.preview.setPlainText(f'Unable to preview firmware: {error}')
 
     def _confirm_discard(self) -> bool:

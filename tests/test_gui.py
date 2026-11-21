@@ -23,7 +23,7 @@ from PyQt6.QtWidgets import QApplication, QFileDialog, QInputDialog, QMessageBox
 
 from picpro_gui.project import Project
 from picpro_gui.socket import SocketPreviewWidget
-from picpro_gui.window import PicProGUI
+from picpro_gui.window import _RECENT_PROJECT_LIMIT, PicProGUI
 from picpro_gui.worker import Operation
 
 
@@ -454,10 +454,10 @@ def test_reopens_last_saved_project_in_new_window(window: PicProGUI, tmp_path: P
     restored.close()
 
 
-def test_recent_projects_keep_latest_five_and_reopen_latest(
+def test_recent_projects_keep_configured_limit_and_reopen_latest(
     window: PicProGUI, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    paths = [tmp_path / f'board-{index}.picpro.yml' for index in range(6)]
+    paths = [tmp_path / f'board-{index}.picpro.yml' for index in range(_RECENT_PROJECT_LIMIT + 1)]
     for path in paths:
         monkeypatch.setattr(QFileDialog, 'getSaveFileName', lambda *_args, filename=str(path): (filename, ''))
         assert window.save_project(save_as=True)
@@ -505,3 +505,45 @@ def test_migrates_legacy_last_project_setting(window: PicProGUI, tmp_path: Path)
     assert settings.value('projects/recent_paths', type=list) == [str(path)]
     assert not settings.contains('projects/last_path')
     restored.close()
+
+
+def test_fuse_dropdown_distinguishes_firmware_default_and_override(window: PicProGUI, tmp_path: Path) -> None:
+    firmware = tmp_path / 'firmware.hex'
+    window.firmware_edit.setText(str(firmware))
+    wdt = window._fuse_controls['WDT']
+
+    IntelHex({0x400e: 0xff, 0x400f: 0x31}).write_hex_file(str(firmware))
+    window._preview()
+    assert wdt.currentText() == 'Enabled (From firmware, Default)'
+    assert 'WDT' not in window._collect_project().fuses
+
+    wdt.setCurrentIndex(wdt.findData('Disabled'))
+    assert window._collect_project().fuses == {'WDT': 'Disabled'}
+    assert not window._fuse_override_labels['WDT'].isHidden()
+
+    IntelHex({0x400e: 0xf7, 0x400f: 0x31}).write_hex_file(str(firmware))
+    window._preview()
+    assert wdt.itemText(0) == 'Disabled (From firmware)'
+    assert wdt.itemText(wdt.findData('Enabled')) == 'Enabled (Default)'
+    assert wdt.currentData() == 'Disabled'
+    wdt.setCurrentIndex(wdt.findData('Enabled'))
+    assert window._collect_project().fuses == {'WDT': 'Enabled'}
+    wdt.setCurrentIndex(0)
+    assert 'WDT' not in window._collect_project().fuses
+    assert window._fuse_override_labels['WDT'].isHidden()
+
+
+def test_fuse_dropdown_does_not_label_hex_padding_as_firmware(window: PicProGUI, tmp_path: Path) -> None:
+    firmware = tmp_path / 'firmware.hex'
+    window.firmware_edit.setText(str(firmware))
+    wdt = window._fuse_controls['WDT']
+
+    IntelHex({0: 0x83, 1: 0x12}).write_hex_file(str(firmware))
+    window._preview()
+    assert wdt.currentText() == 'Enabled (Default)'
+    assert wdt.currentData() is None
+
+    IntelHex({0x400e: 0xf7}).write_hex_file(str(firmware))
+    window._preview()
+    assert wdt.currentText() == 'Use firmware or default'
+    assert wdt.currentData() is None

@@ -31,9 +31,9 @@ fuses:
   WDT: Disabled
 ```
 
-Fuse controls come from the selected chip definition. **From firmware** leaves
-the setting in the HEX file unchanged. Program applies overrides and verifies
-ROM/EEPROM; Verify compares ROM/EEPROM against the firmware. Read Configuration
+Fuse dropdowns label values from the HEX file and chip defaults. Selecting the
+inherited value clears the override. The **Override** indicator marks a value
+saved explicitly in the project. Program applies overrides and verifies ROM/EEPROM. Verify compares ROM/EEPROM against the firmware. Read Configuration
 displays detected values without changing project settings. **Read memory…** lets you
 choose a region and export it as Intel HEX or binary, using the same ROM byte
 order as CLI dumps. With a PicPro version that supports `dump all`, the same
