@@ -3,6 +3,8 @@
 A Qt desktop interface for the [PicPro](https://github.com/Salamek/picpro)
 PIC programmer. It requires PicPro 0.5.0 or later.
 
+![PicPro GUI main window](docs/screenshots/picpro-gui.png)
+
 ## Installation
 
 ### PyPI
